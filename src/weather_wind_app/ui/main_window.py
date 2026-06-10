@@ -759,10 +759,13 @@ class MainWindow(QMainWindow):
         self.speed_unit_combo.currentTextChanged.connect(self._refresh_presented_data)
 
         self.noaa_token_input = QLineEdit()
-        self.noaa_token_input.setPlaceholderText("Optional: NOAA CDO token (future use)")
-        self.noaa_token_input.setEchoMode(QLineEdit.EchoMode.Normal)
+        self.noaa_token_input.setPlaceholderText("Paste NOAA CDO token here...")
+        self.noaa_token_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.noaa_token_input.setText(self._settings.value("noaa_cdo_token", "", str))
         self.noaa_token_input.editingFinished.connect(self._save_gui_settings)
+        self.noaa_token_input.textChanged.connect(self._update_noaa_token_status)
+
+        self.noaa_token_status_label = QLabel()
 
         now = datetime.now(timezone.utc)
         start = now - timedelta(hours=DEFAULT_HISTORY_HOURS)
@@ -786,6 +789,7 @@ class MainWindow(QMainWindow):
         query_form.addRow("Dimension Unit", self.dimension_unit_combo)
         query_form.addRow("Speed Unit", self.speed_unit_combo)
         query_form.addRow("NOAA CDO Token (Optional)", self.noaa_token_input)
+        query_form.addRow("CDO Token Status", self.noaa_token_status_label)
         query_form.addRow("History Start (UTC)", self.history_start_input)
         query_form.addRow("History End (UTC)", self.history_end_input)
 
@@ -850,7 +854,8 @@ class MainWindow(QMainWindow):
         self.nationwide_fallback_check.setChecked(False)
 
         self.noaa_token_input.setToolTip(
-            "Optional NOAA CDO token for future expansion. Current app calls NWS endpoints without this token."
+            "NOAA CDO token for extended historical data (Phase 4). "
+            "Current live and NWS historical fetches work without it."
         )
 
         advanced_form.addRow("Nearby Page Cap", self.nearby_max_pages_input)
@@ -1739,8 +1744,20 @@ class MainWindow(QMainWindow):
             _to_bool(self._settings.value("prevailing_show_text", self.prevailing_show_text_check.isChecked()))
         )
         self._update_prevailing_unit_labels()
+        self._update_noaa_token_status()
         self._push_prevailing_marker()
         self._push_prevailing_overlay()
+
+    def _update_noaa_token_status(self) -> None:
+        configured = bool(self.noaa_token_input.text().strip())
+        if configured:
+            self.noaa_token_status_label.setText("Configured")
+            self.noaa_token_status_label.setStyleSheet("color: green;")
+        else:
+            self.noaa_token_status_label.setText(
+                "Not configured — CDO features unavailable (NWS live/historical unaffected)"
+            )
+            self.noaa_token_status_label.setStyleSheet("color: orange;")
 
     @Slot()
     def _copy_logs(self) -> None:
