@@ -35,8 +35,7 @@ ENV/
 .conda/
 
 # IDE/editor files
-.vscode/*
-!.vscode/launch.json
+.vscode/
 .idea/
 *.code-workspace
 
