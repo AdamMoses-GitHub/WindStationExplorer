@@ -230,6 +230,7 @@ class NWSClient:
         observations: List[WindStationObservation] = []
         total_chunks = (len(station_list) + CHUNK_SIZE - 1) // CHUNK_SIZE
         chunk_idx = 0
+        failed_count = 0
 
         for chunk in _chunks(station_list, CHUNK_SIZE):
             if should_cancel and should_cancel():
@@ -245,15 +246,21 @@ class NWSClient:
                 for future in as_completed(future_to_station):
                     if should_cancel and should_cancel():
                         break
-                    result = future.result()
+                    station = future_to_station[future]
+                    result, error = future.result()
                     if result is not None:
                         observations.append(result)
+                    elif error and logger:
+                        failed_count += 1
+                        logger(f"Station {station.station_id} failed: {error}")
             if logger:
                 logger(
                     f"Latest observation chunk {chunk_idx}/{total_chunks}: "
                     f"stations={len(chunk)}, observations={len(observations)}"
                 )
 
+        if failed_count and logger:
+            logger(f"Latest observation fetch complete: {failed_count} station(s) failed (network/parse errors).")
         observations.sort(key=lambda o: o.station_id)
         return observations
 
@@ -269,6 +276,8 @@ class NWSClient:
         series: Dict[str, List[WindStationObservation]] = {}
         total_chunks = (len(station_list) + CHUNK_SIZE - 1) // CHUNK_SIZE
         chunk_idx = 0
+
+        failed_hist_count = 0
 
         for chunk in _chunks(station_list, CHUNK_SIZE):
             if should_cancel and should_cancel():
@@ -290,8 +299,16 @@ class NWSClient:
                     if should_cancel and should_cancel():
                         break
                     station = future_to_station[future]
-                    entries = future.result()
+                    entries, error = future.result()
+                    if error and logger:
+                        failed_hist_count += 1
+                        logger(f"Station {station.station_id} historical failed: {error}")
                     if entries:
+                        if len(entries) >= 500 and logger:
+                            logger(
+                                f"Station {station.station_id}: received 500 observations (API limit); "
+                                "results may be truncated — narrow the time range for complete data."
+                            )
                         entries.sort(key=lambda e: e.timestamp or datetime.min)
                         series[station.station_id] = entries
             if logger:
@@ -300,6 +317,8 @@ class NWSClient:
                     f"stations={len(chunk)}, stations_with_data={len(series)}"
                 )
 
+        if failed_hist_count and logger:
+            logger(f"Historical fetch complete: {failed_hist_count} station(s) failed (network/parse errors).")
         return series
 
     @staticmethod
@@ -314,9 +333,9 @@ class NWSClient:
             latest.append(entries[-1])
         return latest
 
-    def _fetch_station_latest(self, station: StationRef) -> Optional[WindStationObservation]:
+    def _fetch_station_latest(self, station: StationRef) -> Tuple[Optional[WindStationObservation], Optional[str]]:
         if not station.latest_observation_url:
-            return None
+            return None, None
         try:
             payload = self._get_json(station.latest_observation_url)
             props = payload.get("properties", {})
@@ -334,16 +353,16 @@ class NWSClient:
                 wind_gust_mps=wind_gust_mps,
                 wind_direction_deg=wind_direction,
                 source="NWS",
-            )
-        except Exception:
-            return None
+            ), None
+        except Exception as exc:
+            return None, str(exc)
 
     def _fetch_station_range(
         self,
         station: StationRef,
         start_iso: str,
         end_iso: str,
-    ) -> List[WindStationObservation]:
+    ) -> Tuple[List[WindStationObservation], Optional[str]]:
         try:
             url = f"{NWS_BASE_URL}/stations/{station.station_id}/observations"
             resp = self.session.get(
@@ -375,9 +394,9 @@ class NWSClient:
                         source="NWS-HIST",
                     )
                 )
-            return observations
-        except Exception:
-            return []
+            return observations, None
+        except Exception as exc:
+            return [], str(exc)
 
     def _get_json(self, url: str) -> dict:
         resp = self.session.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
