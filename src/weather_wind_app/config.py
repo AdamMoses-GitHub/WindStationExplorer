@@ -1,0 +1,32 @@
+"""Application configuration constants."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+APP_NAME = "US Wind Sensor Explorer"
+DEFAULT_CENTROID_LAT = 39.8283
+DEFAULT_CENTROID_LON = -98.5795
+DEFAULT_WIDTH = 5.0
+DEFAULT_HEIGHT = 5.0
+DEFAULT_DIMENSION_UNIT = "km"
+SUPPORTED_DIMENSION_UNITS = ("km", "mi")
+DEFAULT_REFRESH_SECONDS = 300
+MIN_REFRESH_SECONDS = 10
+MAX_STATIONS_PER_QUERY = 500
+DEFAULT_NEARBY_MAX_PAGES = 4
+MIN_NEARBY_MAX_PAGES = 1
+MAX_NEARBY_MAX_PAGES = 20
+DEFAULT_HISTORY_HOURS = 24
+LIVE_CACHE_TTL_SECONDS = 120
+HIST_CACHE_TTL_SECONDS = 600
+MAX_LOG_LINES = 2000
+NWS_BASE_URL = "https://api.weather.gov"
+NWS_USER_AGENT = "USWindSensorExplorer/0.1 (github-copilot)"
+REQUEST_TIMEOUT_SECONDS = 20
+OBSERVATION_WORKERS = 12
+
+PACKAGE_ROOT = Path(__file__).resolve().parent
+ASSETS_DIR = PACKAGE_ROOT / "assets"
+MAP_HTML_PATH = ASSETS_DIR / "map.html"
+CACHE_DIR = PACKAGE_ROOT.parent.parent / ".cache" / "weather_wind_app"

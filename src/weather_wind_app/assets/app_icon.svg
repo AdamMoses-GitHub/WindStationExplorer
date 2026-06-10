@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">US Wind Sensor Explorer App Icon</title>
+  <desc id="desc">Rounded square icon with map pin, wind paths, and sensor rings.</desc>
+
+  <defs>
+    <linearGradient id="iconBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B3A53"/>
+      <stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+    <linearGradient id="wind" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7DD3FC"/>
+      <stop offset="100%" stop-color="#E0F2FE"/>
+    </linearGradient>
+    <linearGradient id="pin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="24" y="24" width="464" height="464" rx="96" fill="url(#iconBg)"/>
+
+  <g fill="none" stroke="url(#wind)" stroke-linecap="round">
+    <path d="M84 174 C170 140 252 142 338 176 C382 194 422 194 452 178" stroke-width="18"/>
+    <path d="M72 232 C166 198 250 202 338 232 C384 246 420 246 444 236" stroke-width="14" stroke-opacity="0.92"/>
+    <path d="M94 288 C166 262 226 266 292 290 C326 302 354 302 384 292" stroke-width="10" stroke-opacity="0.85"/>
+  </g>
+
+  <g transform="translate(256 270)">
+    <path d="M0 -118 C43 -118 74 -86 74 -42 C74 24 16 82 0 112 C-16 82 -74 24 -74 -42 C-74 -86 -43 -118 0 -118 Z" fill="url(#pin)"/>
+    <circle cx="0" cy="-44" r="22" fill="#FFF7ED"/>
+
+    <circle cx="0" cy="-44" r="50" fill="none" stroke="#BAE6FD" stroke-width="8" stroke-opacity="0.95"/>
+    <circle cx="0" cy="-44" r="76" fill="none" stroke="#BAE6FD" stroke-width="6" stroke-opacity="0.62"/>
+  </g>
+</svg>

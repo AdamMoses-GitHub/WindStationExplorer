@@ -1,0 +1,51 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Native extensions
+*.so
+*.pyd
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Unit test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Type checker / linter caches
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Environments
+.env
+.env.*
+venv/
+.venv/
+env/
+ENV/
+.conda/
+
+# IDE/editor files
+.vscode/*
+!.vscode/launch.json
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project cache/output
+.cache/
+
+# Logs
+*.log

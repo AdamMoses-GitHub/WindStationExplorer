@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wind Map</title>
+  <link
+    rel="stylesheet"
+    href="vendor/leaflet/leaflet.css"
+  />
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    .popup-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .map-error {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      padding: 8px 10px;
+      font: 13px/1.3 sans-serif;
+      color: #b91c1c;
+    }
+    .prevailing-text {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #111827;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font: 12px/1.2 sans-serif;
+      color: #111827;
+      white-space: nowrap;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <script>
+    let map = null;
+    let markerLayer = null;
+    let boxLayer = null;
+    let bridge = null;
+    let pendingStations = [];
+    let pendingBounds = null;
+    let mapReady = false;
+    let tileLayer = null;
+    let windVectorMode = "upwind";
+    let prevailingLayer = null;
+    let pendingPrevailing = null;
+    let prevailingMarkerLayer = null;
+    let prevailingMarker = null;
+    let pendingPrevailingMarker = null;
+    let prevailingMarkerPlacementEnabled = false;
+
+    new QWebChannel(qt.webChannelTransport, function(channel) {
+      bridge = channel.objects.bridge;
+    });
+
+    function addMapError(message) {
+      const existing = document.getElementById("map-error");
+      if (existing) {
+        existing.textContent = message;
+        return;
+      }
+      const panel = document.createElement("div");
+      panel.id = "map-error";
+      panel.className = "map-error";
+      panel.textContent = message;
+      document.body.appendChild(panel);
+    }
+
+    function initializeMap() {
+      if (!window.L) {
+        addMapError("Map library failed to load. Check network access and retry.");
+        return;
+      }
+
+      map = L.map("map").setView([39.8283, -98.5795], 4);
+      const conusBounds = [
+        [24.396308, -125.0],
+        [49.384358, -66.93457]
+      ];
+      map.fitBounds(conusBounds, { padding: [12, 12] });
+      addBaseMapLayer();
+
+      markerLayer = L.layerGroup().addTo(map);
+      prevailingLayer = L.layerGroup().addTo(map);
+      prevailingMarkerLayer = L.layerGroup().addTo(map);
+      map.on("click", handleMapClickForPrevailingMarker);
+      mapReady = true;
+
+      if (pendingBounds) {
+        setQueryBounds(pendingBounds.minLat, pendingBounds.minLon, pendingBounds.maxLat, pendingBounds.maxLon);
+      }
+      if (pendingStations.length > 0) {
+        setStations(pendingStations);
+      }
+      if (pendingPrevailing) {
+        setPrevailingOverlay(pendingPrevailing);
+      }
+      if (pendingPrevailingMarker) {
+        setPrevailingMarker(pendingPrevailingMarker);
+      }
+    }
+
+    function addBaseMapLayer() {
+      const providers = [
+        {
+          name: "Carto Voyager",
+          url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+          options: {
+            subdomains: "abcd",
+            maxZoom: 20,
+            attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+          }
+        },
+        {
+          name: "Esri World Street Map",
+          url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+          options: {
+            maxZoom: 19,
+            attribution: "Tiles &copy; Esri"
+          }
+        },
+        {
+          name: "OpenStreetMap",
+          url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          options: {
+            maxZoom: 19,
+            attribution: "&copy; OpenStreetMap contributors"
+          }
+        }
+      ];
+
+      let providerIndex = 0;
+
+      function loadProvider(index) {
+        const provider = providers[index];
+        if (!provider) {
+          addMapError("Unable to load map tiles from available providers.");
+          return;
+        }
+
+        const existing = document.getElementById("map-error");
+        if (existing) {
+          existing.remove();
+        }
+
+        if (tileLayer) {
+          map.removeLayer(tileLayer);
+        }
+
+        let providerSwitched = false;
+        let tileErrorCount = 0;
+        tileLayer = L.tileLayer(provider.url, provider.options);
+        tileLayer.on("tileerror", function() {
+          tileErrorCount += 1;
+          if (tileErrorCount < 6) {
+            return;
+          }
+          if (providerSwitched) {
+            return;
+          }
+          providerSwitched = true;
+          providerIndex += 1;
+          console.warn("Tile provider failed, switching from", provider.name);
+          loadProvider(providerIndex);
+        });
+        tileLayer.addTo(map);
+      }
+
+      loadProvider(providerIndex);
+    }
+
+    function loadLeafletScript(url, onSuccess, onError) {
+      const script = document.createElement("script");
+      script.src = url;
+      script.async = true;
+      script.onload = onSuccess;
+      script.onerror = onError;
+      document.head.appendChild(script);
+    }
+
+    function loadLeafletWithFallback() {
+      loadLeafletScript(
+        "vendor/leaflet/leaflet.js",
+        initializeMap,
+        function() {
+          loadLeafletScript(
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+            initializeMap,
+            function() {
+              loadLeafletScript(
+                "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
+                initializeMap,
+                function() {
+                  addMapError("Unable to load Leaflet from available CDNs.");
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+
+    function speedColor(speedMps) {
+      if (speedMps === null || speedMps === undefined) return "#6c757d";
+      if (speedMps < 3) return "#2a9d8f";
+      if (speedMps < 8) return "#8ab17d";
+      if (speedMps < 14) return "#f4a261";
+      return "#e76f51";
+    }
+
+    function speedToArrowSize(speedMps) {
+      if (speedMps === null || speedMps === undefined) {
+        return 14;
+      }
+      const clamped = Math.max(0, Math.min(speedMps, 30));
+      return 12 + (clamped / 30) * 20;
+    }
+
+    function createArrowIcon(station) {
+      const color = speedColor(station.wind_speed_mps);
+      const size = speedToArrowSize(station.wind_speed_mps);
+      const direction = station.wind_direction_deg === null || station.wind_direction_deg === undefined
+        ? 0
+        : station.wind_direction_deg;
+      const rotation = windVectorMode === "downwind" ? direction + 180 : direction;
+      const opacity = station.wind_direction_deg === null || station.wind_direction_deg === undefined ? 0.65 : 0.95;
+      const half = size / 2;
+      const stroke = Math.max(1.5, size * 0.08);
+      const svg = `
+        <svg width="${size}" height="${size}" viewBox="0 0 100 100" style="display:block;overflow:visible;transform:rotate(${rotation}deg);">
+          <path d="M50 6 L88 84 L50 70 L12 84 Z" fill="${color}" stroke="#111827" stroke-width="${stroke}" opacity="${opacity}" />
+        </svg>
+      `;
+
+      return L.divIcon({
+        html: svg,
+        className: "wind-arrow-icon",
+        iconSize: [size, size],
+        iconAnchor: [half, half],
+        popupAnchor: [0, -half],
+      });
+    }
+
+    function markerPopup(station) {
+      const speed = station.speed_display === null ? "n/a" : station.speed_display.toFixed(2) + " " + station.speed_unit;
+      const gust = station.gust_display === null ? "n/a" : station.gust_display.toFixed(2) + " " + station.speed_unit;
+      const dir = station.wind_direction_deg === null ? "n/a" : station.wind_direction_deg.toFixed(0) + " deg";
+      const time = station.timestamp || "n/a";
+      const lapsed = station.lapsed_since_update || "n/a";
+      return `
+        <div class="popup-title">${station.station_id} - ${station.station_name}</div>
+        <div>Speed: ${speed}</div>
+        <div>Gust: ${gust}</div>
+        <div>Direction: ${dir}</div>
+        <div>Updated: ${time}</div>
+        <div>Lapsed Since Update: ${lapsed}</div>
+      `;
+    }
+
+    function setStations(stations) {
+      pendingStations = stations || [];
+      if (!mapReady || !markerLayer) {
+        return;
+      }
+      markerLayer.clearLayers();
+      pendingStations.forEach((station) => {
+        const marker = L.marker([station.latitude, station.longitude], {
+          icon: createArrowIcon(station)
+        }).addTo(markerLayer);
+
+        marker.bindPopup(markerPopup(station));
+        marker.on("click", () => {
+          if (bridge && bridge.markerClicked) {
+            bridge.markerClicked(station.station_id);
+          }
+        });
+      });
+    }
+
+    function setWindVectorMode(mode) {
+      if (mode !== "upwind" && mode !== "downwind") {
+        windVectorMode = "upwind";
+      } else {
+        windVectorMode = mode;
+      }
+      if (pendingStations.length > 0) {
+        setStations(pendingStations);
+      }
+    }
+
+    function setQueryBounds(minLat, minLon, maxLat, maxLon) {
+      pendingBounds = { minLat, minLon, maxLat, maxLon };
+      if (!mapReady || !map) {
+        return;
+      }
+      if (boxLayer) {
+        map.removeLayer(boxLayer);
+      }
+      boxLayer = L.rectangle([[minLat, minLon], [maxLat, maxLon]], {
+        color: "#2563eb",
+        weight: 1,
+        fillOpacity: 0.05,
+      }).addTo(map);
+      map.fitBounds(boxLayer.getBounds(), { padding: [12, 12] });
+    }
+
+    function currentBounds() {
+      if (boxLayer) {
+        return boxLayer.getBounds();
+      }
+      if (pendingBounds) {
+        return L.latLngBounds([[pendingBounds.minLat, pendingBounds.minLon], [pendingBounds.maxLat, pendingBounds.maxLon]]);
+      }
+      return null;
+    }
+
+    function pointWithinCurrentBounds(lat, lon) {
+      const bounds = currentBounds();
+      if (!bounds) {
+        return false;
+      }
+      return bounds.contains([lat, lon]);
+    }
+
+    function createPrevailingMarkerIcon() {
+      return L.divIcon({
+        html: '<div style="width:18px;height:18px;border-radius:999px;background:#1d4ed8;border:3px solid #ffffff;box-shadow:0 1px 4px rgba(15,23,42,0.35);"></div>',
+        className: "prevailing-marker-icon",
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+    }
+
+    function clearPrevailingMarker() {
+      pendingPrevailingMarker = null;
+      if (!prevailingMarkerLayer) {
+        return;
+      }
+      prevailingMarkerLayer.clearLayers();
+      prevailingMarker = null;
+    }
+
+    function renderPrevailingMarker(latitude, longitude) {
+      if (!prevailingMarkerLayer) {
+        return;
+      }
+      prevailingMarkerLayer.clearLayers();
+      prevailingMarker = null;
+      if (latitude === null || longitude === null || latitude === undefined || longitude === undefined) {
+        return;
+      }
+      prevailingMarker = L.marker([latitude, longitude], {
+        icon: createPrevailingMarkerIcon(),
+        draggable: prevailingMarkerPlacementEnabled,
+      }).addTo(prevailingMarkerLayer);
+      prevailingMarker.on("dragend", function(event) {
+        const latlng = event.target.getLatLng();
+        if (!pointWithinCurrentBounds(latlng.lat, latlng.lng)) {
+          clearPrevailingMarker();
+          if (bridge && bridge.prevailingMarkerRejected) {
+            bridge.prevailingMarkerRejected("Marker must be placed inside the current bounding box.");
+          }
+          return;
+        }
+        if (bridge && bridge.prevailingMarkerPlaced) {
+          bridge.prevailingMarkerPlaced(latlng.lat, latlng.lng);
+        }
+      });
+    }
+
+    function handleMapClickForPrevailingMarker(event) {
+      if (!prevailingMarkerPlacementEnabled) {
+        return;
+      }
+      const lat = event.latlng.lat;
+      const lon = event.latlng.lng;
+      if (!pointWithinCurrentBounds(lat, lon)) {
+        clearPrevailingMarker();
+        if (bridge && bridge.prevailingMarkerRejected) {
+          bridge.prevailingMarkerRejected("Marker must be placed inside the current bounding box.");
+        }
+        return;
+      }
+      renderPrevailingMarker(lat, lon);
+      if (bridge && bridge.prevailingMarkerPlaced) {
+        bridge.prevailingMarkerPlaced(lat, lon);
+      }
+    }
+
+    function setPrevailingMarkerPlacement(enabled) {
+      prevailingMarkerPlacementEnabled = !!enabled;
+      if (prevailingMarker) {
+        prevailingMarker.dragging[prevailingMarkerPlacementEnabled ? "enable" : "disable"]();
+      }
+    }
+
+    function setPrevailingMarker(payload) {
+      pendingPrevailingMarker = payload || null;
+      if (payload && typeof payload.enabled === "boolean") {
+        prevailingMarkerPlacementEnabled = payload.enabled;
+      }
+      if (!mapReady || !prevailingMarkerLayer) {
+        return;
+      }
+      if (!payload || payload.latitude === null || payload.longitude === null || payload.latitude === undefined || payload.longitude === undefined) {
+        clearPrevailingMarker();
+        return;
+      }
+      renderPrevailingMarker(payload.latitude, payload.longitude);
+      if (prevailingMarker) {
+        prevailingMarker.dragging[prevailingMarkerPlacementEnabled ? "enable" : "disable"]();
+      }
+    }
+
+    function createPrevailingArrowIcon(directionDeg, speedMps) {
+      const color = "#1d4ed8";
+      const baseSize = 38;
+      const clamped = speedMps === null || speedMps === undefined ? 0 : Math.max(0, Math.min(speedMps, 30));
+      const size = baseSize + (clamped / 30) * 24;
+      const half = size / 2;
+      const stroke = Math.max(2, size * 0.07);
+      const rotation = directionDeg === null || directionDeg === undefined ? 0 : directionDeg;
+      const svg = `
+        <svg width="${size}" height="${size}" viewBox="0 0 100 100" style="display:block;overflow:visible;transform:rotate(${rotation}deg);">
+          <path d="M50 6 L88 84 L50 70 L12 84 Z" fill="${color}" stroke="#0f172a" stroke-width="${stroke}" opacity="0.95" />
+        </svg>
+      `;
+      return L.divIcon({
+        html: svg,
+        className: "prevailing-arrow-icon",
+        iconSize: [size, size],
+        iconAnchor: [half, half],
+      });
+    }
+
+    function setPrevailingOverlay(payload) {
+      pendingPrevailing = payload || null;
+      if (!mapReady || !map || !prevailingLayer) {
+        return;
+      }
+      prevailingLayer.clearLayers();
+
+      if (!payload || !payload.has_prevailing) {
+        return;
+      }
+
+      if (payload.show_arrow && payload.centroid_lat !== null && payload.centroid_lon !== null) {
+        L.marker([payload.centroid_lat, payload.centroid_lon], {
+          icon: createPrevailingArrowIcon(payload.direction_deg, payload.speed_mps)
+        }).addTo(prevailingLayer);
+      }
+
+      if (payload.show_text && payload.min_lat !== null && payload.min_lon !== null && payload.max_lon !== null) {
+        const textLat = payload.min_lat;
+        const textLon = (payload.min_lon + payload.max_lon) / 2.0;
+        const text = payload.text || "Prevailing wind: n/a";
+        const textIcon = L.divIcon({
+          html: `<div class="prevailing-text">${text}</div>`,
+          className: "prevailing-text-wrapper",
+          iconSize: [220, 24],
+          iconAnchor: [110, 12],
+        });
+        L.marker([textLat, textLon], { icon: textIcon, interactive: false }).addTo(prevailingLayer);
+      }
+    }
+
+    window.setStations = setStations;
+    window.setWindVectorMode = setWindVectorMode;
+    window.setQueryBounds = setQueryBounds;
+    window.setPrevailingMarkerPlacement = setPrevailingMarkerPlacement;
+    window.setPrevailingMarker = setPrevailingMarker;
+    window.clearPrevailingMarker = clearPrevailingMarker;
+    window.setPrevailingOverlay = setPrevailingOverlay;
+    loadLeafletWithFallback();
+  </script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="280" viewBox="0 0 960 280" role="img" aria-labelledby="title desc">
+  <title id="title">US Wind Sensor Explorer Logo</title>
+  <desc id="desc">Stylized wind swirls over a map pin and sensor rings with app wordmark.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B3A53"/>
+      <stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+    <linearGradient id="windGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7DD3FC"/>
+      <stop offset="100%" stop-color="#BAE6FD"/>
+    </linearGradient>
+    <linearGradient id="pinGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <rect x="20" y="20" width="240" height="240" rx="44" fill="url(#bgGrad)" filter="url(#softShadow)"/>
+
+  <g transform="translate(140 140)">
+    <path d="M0 -64 C26 -64 44 -46 44 -20 C44 18 12 50 0 70 C-12 50 -44 18 -44 -20 C-44 -46 -26 -64 0 -64 Z" fill="url(#pinGrad)"/>
+    <circle cx="0" cy="-22" r="12" fill="#FFF7ED"/>
+
+    <circle cx="0" cy="-22" r="26" fill="none" stroke="#BAE6FD" stroke-width="3" stroke-opacity="0.9"/>
+    <circle cx="0" cy="-22" r="40" fill="none" stroke="#BAE6FD" stroke-width="2.5" stroke-opacity="0.6"/>
+  </g>
+
+  <g fill="none" stroke="url(#windGrad)" stroke-linecap="round">
+    <path d="M44 90 C92 74 130 72 180 92 C210 104 238 104 260 94" stroke-width="8"/>
+    <path d="M38 122 C92 106 138 104 188 122 C216 132 240 132 258 124" stroke-width="6" stroke-opacity="0.9"/>
+    <path d="M44 152 C86 138 122 138 162 152 C190 162 218 162 248 150" stroke-width="4.5" stroke-opacity="0.8"/>
+  </g>
+
+  <g transform="translate(300 0)">
+    <text x="0" y="112" font-family="Segoe UI, Tahoma, sans-serif" font-size="62" font-weight="700" fill="#0F172A" letter-spacing="0.6">US Wind Sensor</text>
+    <text x="0" y="176" font-family="Segoe UI, Tahoma, sans-serif" font-size="58" font-weight="700" fill="#0E7490" letter-spacing="0.4">Explorer</text>
+    <text x="2" y="220" font-family="Segoe UI, Tahoma, sans-serif" font-size="24" fill="#334155" letter-spacing="0.3">Live + historical station data mapped across the United States</text>
+  </g>
+</svg>
